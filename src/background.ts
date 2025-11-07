@@ -3,7 +3,6 @@
  */
 
 import { MessageType, type Message, type TTSConfig, type TTSRequest, type PlaybackStatus } from './types';
-import { audioPlayer } from './audioPlayer';
 
 // Default configuration
 const DEFAULT_CONFIG: TTSConfig = {
@@ -18,6 +17,8 @@ const DEFAULT_CONFIG: TTSConfig = {
 let currentConfig: TTSConfig = { ...DEFAULT_CONFIG };
 let isPlaying = false;
 let isPaused = false;
+let currentAudio: HTMLAudioElement | null = null;
+let currentAudioUrl: string | null = null;
 
 /**
  * Load configuration from storage
@@ -148,45 +149,97 @@ async function readAloud(text: string): Promise<void> {
     isPaused = false;
     updatePlaybackStatus();
 
+    // Stop any currently playing audio
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+    if (currentAudioUrl) {
+      URL.revokeObjectURL(currentAudioUrl);
+      currentAudioUrl = null;
+    }
+
     // Call TTS API
     const audioBlob = await callOpenAITTS(text);
 
-    // Play the audio with configured volume
-    await audioPlayer.play(audioBlob, currentConfig.volume);
+    // Create audio element and play
+    currentAudioUrl = URL.createObjectURL(audioBlob);
+    currentAudio = new Audio(currentAudioUrl);
+    currentAudio.volume = currentConfig.volume;
+
+    // Set up event handlers
+    currentAudio.onended = () => {
+      cleanupAudio();
+      isPlaying = false;
+      isPaused = false;
+      updatePlaybackStatus();
+    };
+
+    currentAudio.onerror = (error) => {
+      console.error('Audio playback error:', error);
+      cleanupAudio();
+      isPlaying = false;
+      isPaused = false;
+      updatePlaybackStatus();
+    };
+
+    // Play the audio
+    await currentAudio.play();
 
   } catch (error) {
     console.error('Error in readAloud:', error);
-    throw error;
-  } finally {
+    cleanupAudio();
     isPlaying = false;
     isPaused = false;
     updatePlaybackStatus();
+    throw error;
   }
+}
+
+/**
+ * Cleanup audio resources
+ */
+function cleanupAudio(): void {
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+  currentAudio = null;
 }
 
 /**
  * Pause playback
  */
 function pausePlayback(): void {
-  audioPlayer.pause();
-  isPaused = true;
-  updatePlaybackStatus();
+  if (currentAudio && !currentAudio.paused) {
+    currentAudio.pause();
+    isPaused = true;
+    updatePlaybackStatus();
+  }
 }
 
 /**
  * Resume playback
  */
 function resumePlayback(): void {
-  audioPlayer.resume();
-  isPaused = false;
-  updatePlaybackStatus();
+  if (currentAudio && currentAudio.paused) {
+    currentAudio.play().catch((error) => {
+      console.error('Failed to resume playback:', error);
+    });
+    isPaused = false;
+    updatePlaybackStatus();
+  }
 }
 
 /**
  * Stop playback
  */
 function stopPlayback(): void {
-  audioPlayer.stop();
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+  }
+  cleanupAudio();
   isPlaying = false;
   isPaused = false;
   updatePlaybackStatus();
