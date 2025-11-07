@@ -15,6 +15,10 @@ export default defineConfig({
         {
           src: 'src/assets/*',
           dest: 'assets'
+        },
+        {
+          src: 'src/offscreen.html',
+          dest: '.'
         }
       ]
     })
@@ -25,11 +29,12 @@ export default defineConfig({
       input: {
         popup: resolve(__dirname, 'popup.html'),
         background: resolve(__dirname, 'src/background.ts'),
-        content: resolve(__dirname, 'src/content.ts')
+        content: resolve(__dirname, 'src/content.ts'),
+        offscreen: resolve(__dirname, 'src/offscreen.ts')
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          if (chunkInfo.name === 'background' || chunkInfo.name === 'content') {
+          if (chunkInfo.name === 'background' || chunkInfo.name === 'content' || chunkInfo.name === 'offscreen') {
             return '[name].js';
           }
           return 'assets/[name]-[hash].js';

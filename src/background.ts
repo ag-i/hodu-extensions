@@ -17,8 +17,44 @@ const DEFAULT_CONFIG: TTSConfig = {
 let currentConfig: TTSConfig = { ...DEFAULT_CONFIG };
 let isPlaying = false;
 let isPaused = false;
-let currentAudio: HTMLAudioElement | null = null;
-let currentAudioUrl: string | null = null;
+
+/**
+ * Ensure offscreen document exists for audio playback
+ */
+async function ensureOffscreenDocument(): Promise<void> {
+  // @ts-ignore - offscreen API types not yet in @types/chrome
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT']
+  });
+
+  if (existingContexts.length > 0) {
+    return;
+  }
+
+  // @ts-ignore - offscreen API types not yet in @types/chrome
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: ['AUDIO_PLAYBACK'],
+    justification: 'Playing TTS audio from API response'
+  });
+}
+
+/**
+ * Convert blob to base64
+ */
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      // Remove the data:audio/mpeg;base64, prefix
+      const base64Data = base64.split(',')[1];
+      resolve(base64Data);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 /**
  * Load configuration from storage
@@ -149,46 +185,26 @@ async function readAloud(text: string): Promise<void> {
     isPaused = false;
     updatePlaybackStatus();
 
-    // Stop any currently playing audio
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
-    }
-    if (currentAudioUrl) {
-      URL.revokeObjectURL(currentAudioUrl);
-      currentAudioUrl = null;
-    }
+    // Ensure offscreen document exists
+    await ensureOffscreenDocument();
 
     // Call TTS API
     const audioBlob = await callOpenAITTS(text);
 
-    // Create audio element and play
-    currentAudioUrl = URL.createObjectURL(audioBlob);
-    currentAudio = new Audio(currentAudioUrl);
-    currentAudio.volume = currentConfig.volume;
+    // Convert blob to base64
+    const audioBase64 = await blobToBase64(audioBlob);
 
-    // Set up event handlers
-    currentAudio.onended = () => {
-      cleanupAudio();
-      isPlaying = false;
-      isPaused = false;
-      updatePlaybackStatus();
-    };
-
-    currentAudio.onerror = (error) => {
-      console.error('Audio playback error:', error);
-      cleanupAudio();
-      isPlaying = false;
-      isPaused = false;
-      updatePlaybackStatus();
-    };
-
-    // Play the audio
-    await currentAudio.play();
+    // Send to offscreen document for playback
+    await chrome.runtime.sendMessage({
+      type: 'PLAY_AUDIO',
+      data: {
+        audioData: audioBase64,
+        volume: currentConfig.volume
+      }
+    });
 
   } catch (error) {
     console.error('Error in readAloud:', error);
-    cleanupAudio();
     isPlaying = false;
     isPaused = false;
     updatePlaybackStatus();
@@ -197,22 +213,11 @@ async function readAloud(text: string): Promise<void> {
 }
 
 /**
- * Cleanup audio resources
- */
-function cleanupAudio(): void {
-  if (currentAudioUrl) {
-    URL.revokeObjectURL(currentAudioUrl);
-    currentAudioUrl = null;
-  }
-  currentAudio = null;
-}
-
-/**
  * Pause playback
  */
-function pausePlayback(): void {
-  if (currentAudio && !currentAudio.paused) {
-    currentAudio.pause();
+async function pausePlayback(): Promise<void> {
+  if (isPlaying && !isPaused) {
+    await chrome.runtime.sendMessage({ type: 'PAUSE_AUDIO' }).catch(() => {});
     isPaused = true;
     updatePlaybackStatus();
   }
@@ -221,11 +226,9 @@ function pausePlayback(): void {
 /**
  * Resume playback
  */
-function resumePlayback(): void {
-  if (currentAudio && currentAudio.paused) {
-    currentAudio.play().catch((error) => {
-      console.error('Failed to resume playback:', error);
-    });
+async function resumePlayback(): Promise<void> {
+  if (isPlaying && isPaused) {
+    await chrome.runtime.sendMessage({ type: 'RESUME_AUDIO' }).catch(() => {});
     isPaused = false;
     updatePlaybackStatus();
   }
@@ -234,12 +237,8 @@ function resumePlayback(): void {
 /**
  * Stop playback
  */
-function stopPlayback(): void {
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio.currentTime = 0;
-  }
-  cleanupAudio();
+async function stopPlayback(): Promise<void> {
+  await chrome.runtime.sendMessage({ type: 'STOP_AUDIO' }).catch(() => {});
   isPlaying = false;
   isPaused = false;
   updatePlaybackStatus();
@@ -293,11 +292,28 @@ async function getSelectedTextFromActiveTab(): Promise<string> {
 }
 
 /**
- * Handle messages from popup/content scripts
+ * Handle messages from popup/content scripts and offscreen document
  */
-chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: Message | any, sender, sendResponse) => {
   (async () => {
     try {
+      // Handle messages from offscreen document
+      if (message.type === 'AUDIO_ENDED') {
+        isPlaying = false;
+        isPaused = false;
+        updatePlaybackStatus();
+        return;
+      }
+
+      if (message.type === 'AUDIO_ERROR') {
+        console.error('Audio playback error from offscreen:', message.data?.error);
+        isPlaying = false;
+        isPaused = false;
+        updatePlaybackStatus();
+        return;
+      }
+
+      // Handle messages from popup/content scripts
       switch (message.type) {
         case MessageType.READ_ALOUD:
           const text = message.data?.text || await getSelectedTextFromActiveTab();
@@ -306,17 +322,17 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
           break;
 
         case MessageType.PAUSE_PLAYBACK:
-          pausePlayback();
+          await pausePlayback();
           sendResponse({ success: true });
           break;
 
         case MessageType.RESUME_PLAYBACK:
-          resumePlayback();
+          await resumePlayback();
           sendResponse({ success: true });
           break;
 
         case MessageType.STOP_PLAYBACK:
-          stopPlayback();
+          await stopPlayback();
           sendResponse({ success: true });
           break;
 
