@@ -6,13 +6,17 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "package": "npm run build && node scripts/package.js",
+    "package:chrome": "npm run build && node scripts/package.js chrome",
+    "package:firefox": "npm run build && node scripts/package.js firefox"
   },
   "dependencies": {
     "vue": "^3.4.21"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
+    "@types/node": "^20.11.30",
     "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "^5.4.2",
     "vite": "^5.1.6",
