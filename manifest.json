@@ -36,5 +36,11 @@
   ],
   "host_permissions": [
     "<all_urls>"
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "read-aloud-tts@hodu-extensions.io",
+      "strict_min_version": "109.0"
+    }
+  }
 }

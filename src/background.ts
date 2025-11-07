@@ -18,25 +18,38 @@ let currentConfig: TTSConfig = { ...DEFAULT_CONFIG };
 let isPlaying = false;
 let isPaused = false;
 
+// Detect if we're in Firefox (which doesn't support offscreen documents)
+const isFirefox = typeof (globalThis as any).browser !== 'undefined' ||
+                  navigator.userAgent.includes('Firefox');
+
 /**
- * Ensure offscreen document exists for audio playback
+ * Ensure offscreen document exists for audio playback (Chrome only)
  */
 async function ensureOffscreenDocument(): Promise<void> {
-  // @ts-ignore - offscreen API types not yet in @types/chrome
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
-  });
-
-  if (existingContexts.length > 0) {
+  // Firefox doesn't support offscreen documents, skip
+  if (isFirefox) {
     return;
   }
 
-  // @ts-ignore - offscreen API types not yet in @types/chrome
-  await chrome.offscreen.createDocument({
-    url: 'offscreen.html',
-    reasons: ['AUDIO_PLAYBACK'],
-    justification: 'Playing TTS audio from API response'
-  });
+  try {
+    // @ts-ignore - offscreen API types not yet in @types/chrome
+    const existingContexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT']
+    });
+
+    if (existingContexts.length > 0) {
+      return;
+    }
+
+    // @ts-ignore - offscreen API types not yet in @types/chrome
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['AUDIO_PLAYBACK'],
+      justification: 'Playing TTS audio from API response'
+    });
+  } catch (error) {
+    console.warn('Offscreen document not supported, using fallback');
+  }
 }
 
 /**
@@ -194,13 +207,25 @@ async function readAloud(text: string): Promise<void> {
     // Convert blob to base64
     const audioBase64 = await blobToBase64(audioBlob);
 
-    // Send to offscreen document for playback
+    // Send to offscreen document for playback (Chrome) or popup (Firefox)
+    const messageType = isFirefox ? 'PLAY_AUDIO_IN_POPUP' : 'PLAY_AUDIO';
     await chrome.runtime.sendMessage({
-      type: 'PLAY_AUDIO',
+      type: messageType,
       data: {
         audioData: audioBase64,
         volume: currentConfig.volume
       }
+    }).catch((err) => {
+      console.error('Failed to send audio to player:', err);
+      // Fallback: try the other method
+      const fallbackType = isFirefox ? 'PLAY_AUDIO' : 'PLAY_AUDIO_IN_POPUP';
+      chrome.runtime.sendMessage({
+        type: fallbackType,
+        data: {
+          audioData: audioBase64,
+          volume: currentConfig.volume
+        }
+      }).catch(() => {});
     });
 
   } catch (error) {

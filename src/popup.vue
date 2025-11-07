@@ -70,7 +70,6 @@
             v-model="config.apiUrl"
             type="text"
             placeholder="http://localhost:8880/v1"
-            @change="saveConfig"
           />
           <small>Local or remote OpenAI-compatible API endpoint</small>
         </div>
@@ -82,7 +81,6 @@
             v-model="config.apiKey"
             type="password"
             placeholder="Leave empty if not required"
-            @change="saveConfig"
           />
           <small>Your API key is stored locally</small>
         </div>
@@ -94,7 +92,6 @@
             v-model="config.model"
             type="text"
             placeholder="tts-1, tts-1-hd, or kokoro"
-            @change="saveConfig"
           />
           <small>OpenAI: tts-1, tts-1-hd | Local: kokoro, or leave empty</small>
         </div>
@@ -108,7 +105,6 @@
               type="text"
               list="voice-presets"
               placeholder="Enter voice name or select preset"
-              @change="saveConfig"
             />
             <datalist id="voice-presets">
               <option value="alloy">OpenAI: Alloy (neutral)</option>
@@ -147,7 +143,6 @@
             min="0.25"
             max="4.0"
             step="0.25"
-            @change="saveConfig"
           />
         </div>
 
@@ -165,6 +160,12 @@
             @input="updateVolume"
           />
         </div>
+
+        <!-- Save Button -->
+        <button @click="saveConfigWithFeedback" class="btn btn-save" :class="{ 'btn-saved': saveSuccess }">
+          <span v-if="!saveSuccess">💾 Save Settings</span>
+          <span v-else>✓ Saved!</span>
+        </button>
       </div>
     </main>
   </div>
@@ -187,6 +188,7 @@ const config = ref<TTSConfig>({ ...DEFAULT_CONFIG });
 const isPlaying = ref(false);
 const isPaused = ref(false);
 const error = ref('');
+const saveSuccess = ref(false);
 
 /**
  * Load configuration from storage
@@ -212,6 +214,17 @@ async function saveConfig() {
     console.error('Failed to save config:', err);
     error.value = 'Failed to save settings';
   }
+}
+
+/**
+ * Save configuration with visual feedback
+ */
+async function saveConfigWithFeedback() {
+  await saveConfig();
+  saveSuccess.value = true;
+  setTimeout(() => {
+    saveSuccess.value = false;
+  }, 2000);
 }
 
 /**
@@ -295,13 +308,78 @@ async function stopPlayback() {
   }
 }
 
+// Audio player for Firefox fallback
+let currentAudio: HTMLAudioElement | null = null;
+let currentBlobUrl: string | null = null;
+
+function cleanupAudio() {
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
+  }
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+}
+
 /**
- * Listen for playback status updates
+ * Listen for playback status updates and Firefox audio playback
  */
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === MessageType.PLAYBACK_STATUS) {
     isPlaying.value = message.data.isPlaying;
     isPaused.value = message.data.isPaused;
+  }
+
+  // Firefox fallback: play audio directly in popup
+  if (message.type === 'PLAY_AUDIO_IN_POPUP') {
+    cleanupAudio();
+
+    // Convert base64 to blob
+    const audioData = message.data.audioData;
+    const byteCharacters = atob(audioData);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+
+    currentBlobUrl = URL.createObjectURL(blob);
+    currentAudio = new Audio(currentBlobUrl);
+    currentAudio.volume = message.data.volume;
+
+    currentAudio.onended = () => {
+      cleanupAudio();
+      chrome.runtime.sendMessage({ type: 'AUDIO_ENDED' }).catch(() => {});
+    };
+
+    currentAudio.onerror = () => {
+      cleanupAudio();
+      chrome.runtime.sendMessage({ type: 'AUDIO_ERROR', data: { error: 'Playback error' } }).catch(() => {});
+    };
+
+    currentAudio.play().catch((err) => {
+      console.error('Failed to play audio:', err);
+      cleanupAudio();
+    });
+  }
+
+  if (message.type === 'PAUSE_AUDIO' && currentAudio) {
+    currentAudio.pause();
+  }
+
+  if (message.type === 'RESUME_AUDIO' && currentAudio) {
+    currentAudio.play().catch((err) => console.error('Failed to resume:', err));
+  }
+
+  if (message.type === 'STOP_AUDIO') {
+    cleanupAudio();
+  }
+
+  if (message.type === 'SET_VOLUME' && currentAudio) {
+    currentAudio.volume = message.data.volume;
   }
 });
 
@@ -481,5 +559,22 @@ main {
 
 .icon {
   font-size: 18px;
+}
+
+.btn-save {
+  width: 100%;
+  margin-top: 16px;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: white;
+  transition: all 0.3s;
+}
+
+.btn-save:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.btn-saved {
+  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%) !important;
 }
 </style>
