@@ -21,21 +21,42 @@
       <div class="actions">
         <button
           @click="readAloud"
-          :disabled="isPlaying || !config.apiKey"
+          :disabled="isPlaying || !config.apiUrl"
           class="btn btn-primary"
         >
           <span class="icon">▶️</span>
           Read Selected Text
         </button>
 
-        <button
-          @click="stopPlayback"
-          :disabled="!isPlaying"
-          class="btn btn-secondary"
-        >
-          <span class="icon">⏹️</span>
-          Stop
-        </button>
+        <div class="button-row">
+          <button
+            v-if="!isPaused"
+            @click="pausePlayback"
+            :disabled="!isPlaying"
+            class="btn btn-secondary"
+          >
+            <span class="icon">⏸️</span>
+            Pause
+          </button>
+
+          <button
+            v-else
+            @click="resumePlayback"
+            class="btn btn-secondary"
+          >
+            <span class="icon">▶️</span>
+            Resume
+          </button>
+
+          <button
+            @click="stopPlayback"
+            :disabled="!isPlaying"
+            class="btn btn-secondary"
+          >
+            <span class="icon">⏹️</span>
+            Stop
+          </button>
+        </div>
       </div>
 
       <!-- Configuration -->
@@ -43,12 +64,24 @@
         <h2>Settings</h2>
 
         <div class="form-group">
-          <label for="apiKey">OpenAI API Key</label>
+          <label for="apiUrl">API URL</label>
+          <input
+            id="apiUrl"
+            v-model="config.apiUrl"
+            type="text"
+            placeholder="http://localhost:8880/v1"
+            @change="saveConfig"
+          />
+          <small>Local or remote OpenAI-compatible API endpoint</small>
+        </div>
+
+        <div class="form-group">
+          <label for="apiKey">API Key (Optional)</label>
           <input
             id="apiKey"
             v-model="config.apiKey"
             type="password"
-            placeholder="sk-..."
+            placeholder="Leave empty if not required"
             @change="saveConfig"
           />
           <small>Your API key is stored locally</small>
@@ -88,6 +121,21 @@
             @change="saveConfig"
           />
         </div>
+
+        <div class="form-group">
+          <label for="volume">
+            Volume: {{ (config.volume * 100).toFixed(0) }}%
+          </label>
+          <input
+            id="volume"
+            v-model.number="config.volume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            @change="saveConfig"
+          />
+        </div>
       </div>
     </main>
   </div>
@@ -98,14 +146,17 @@ import { ref, onMounted } from 'vue';
 import { MessageType, type TTSConfig } from './types';
 
 const DEFAULT_CONFIG: TTSConfig = {
+  apiUrl: 'http://localhost:8880/v1',
   apiKey: '',
   model: 'tts-1',
   voice: 'alloy',
-  speed: 1.0
+  speed: 1.0,
+  volume: 1.0
 };
 
 const config = ref<TTSConfig>({ ...DEFAULT_CONFIG });
 const isPlaying = ref(false);
+const isPaused = ref(false);
 const error = ref('');
 
 /**
@@ -158,6 +209,34 @@ async function readAloud() {
 }
 
 /**
+ * Pause playback
+ */
+async function pausePlayback() {
+  try {
+    await chrome.runtime.sendMessage({
+      type: MessageType.PAUSE_PLAYBACK
+    });
+    isPaused.value = true;
+  } catch (err) {
+    console.error('Error pausing playback:', err);
+  }
+}
+
+/**
+ * Resume playback
+ */
+async function resumePlayback() {
+  try {
+    await chrome.runtime.sendMessage({
+      type: MessageType.RESUME_PLAYBACK
+    });
+    isPaused.value = false;
+  } catch (err) {
+    console.error('Error resuming playback:', err);
+  }
+}
+
+/**
  * Stop playback
  */
 async function stopPlayback() {
@@ -166,6 +245,7 @@ async function stopPlayback() {
       type: MessageType.STOP_PLAYBACK
     });
     isPlaying.value = false;
+    isPaused.value = false;
   } catch (err) {
     console.error('Error stopping playback:', err);
   }
@@ -177,6 +257,7 @@ async function stopPlayback() {
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === MessageType.PLAYBACK_STATUS) {
     isPlaying.value = message.data.isPlaying;
+    isPaused.value = message.data.isPaused;
   }
 });
 
@@ -258,6 +339,15 @@ main {
   flex-direction: column;
   gap: 10px;
   margin-bottom: 20px;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+}
+
+.button-row .btn {
+  flex: 1;
 }
 
 .btn {

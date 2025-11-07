@@ -5,17 +5,20 @@
 export class AudioPlayer {
   private audio: HTMLAudioElement | null = null;
   private currentBlobUrl: string | null = null;
+  private _volume: number = 1.0;
 
   /**
    * Play audio from a Blob
    */
-  async play(audioBlob: Blob): Promise<void> {
+  async play(audioBlob: Blob, volume: number = 1.0): Promise<void> {
     // Stop any currently playing audio
     this.stop();
 
     // Create a new Audio element
     this.currentBlobUrl = URL.createObjectURL(audioBlob);
     this.audio = new Audio(this.currentBlobUrl);
+    this.audio.volume = volume;
+    this._volume = volume;
 
     // Return a promise that resolves when playback ends
     return new Promise((resolve, reject) => {
@@ -39,6 +42,26 @@ export class AudioPlayer {
   }
 
   /**
+   * Pause playback
+   */
+  pause(): void {
+    if (this.audio && !this.audio.paused) {
+      this.audio.pause();
+    }
+  }
+
+  /**
+   * Resume playback
+   */
+  resume(): void {
+    if (this.audio && this.audio.paused) {
+      this.audio.play().catch((error) => {
+        console.error('Failed to resume playback:', error);
+      });
+    }
+  }
+
+  /**
    * Stop playback and cleanup resources
    */
   stop(): void {
@@ -50,10 +73,34 @@ export class AudioPlayer {
   }
 
   /**
+   * Set volume (0.0 to 1.0)
+   */
+  setVolume(volume: number): void {
+    this._volume = Math.max(0, Math.min(1, volume));
+    if (this.audio) {
+      this.audio.volume = this._volume;
+    }
+  }
+
+  /**
+   * Get current volume
+   */
+  getVolume(): number {
+    return this._volume;
+  }
+
+  /**
    * Check if audio is currently playing
    */
   isPlaying(): boolean {
     return this.audio !== null && !this.audio.paused;
+  }
+
+  /**
+   * Check if audio is paused
+   */
+  isPaused(): boolean {
+    return this.audio !== null && this.audio.paused && this.audio.currentTime > 0;
   }
 
   /**

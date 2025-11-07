@@ -7,14 +7,17 @@ import { audioPlayer } from './audioPlayer';
 
 // Default configuration
 const DEFAULT_CONFIG: TTSConfig = {
+  apiUrl: 'http://localhost:8880/v1',
   apiKey: '',
   model: 'tts-1',
   voice: 'alloy',
-  speed: 1.0
+  speed: 1.0,
+  volume: 1.0
 };
 
 let currentConfig: TTSConfig = { ...DEFAULT_CONFIG };
 let isPlaying = false;
+let isPaused = false;
 
 /**
  * Load configuration from storage
@@ -44,11 +47,22 @@ async function saveConfig(config: TTSConfig): Promise<void> {
 }
 
 /**
- * Call OpenAI TTS API
+ * Call OpenAI TTS API (or compatible local API)
  */
 async function callOpenAITTS(text: string): Promise<Blob> {
-  if (!currentConfig.apiKey) {
-    throw new Error('OpenAI API key not configured');
+  if (!currentConfig.apiUrl) {
+    throw new Error('API URL not configured');
+  }
+
+  // Construct the full API endpoint URL
+  let apiEndpoint = currentConfig.apiUrl.trim();
+  // Remove trailing slash if present
+  if (apiEndpoint.endsWith('/')) {
+    apiEndpoint = apiEndpoint.slice(0, -1);
+  }
+  // Add the speech endpoint if not already included
+  if (!apiEndpoint.endsWith('/audio/speech')) {
+    apiEndpoint = `${apiEndpoint}/audio/speech`;
   }
 
   const request: TTSRequest = {
@@ -59,18 +73,24 @@ async function callOpenAITTS(text: string): Promise<Blob> {
     response_format: 'mp3'
   };
 
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+
+  // Add authorization header if API key is provided
+  if (currentConfig.apiKey && currentConfig.apiKey.trim()) {
+    headers['Authorization'] = `Bearer ${currentConfig.apiKey}`;
+  }
+
+  const response = await fetch(apiEndpoint, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${currentConfig.apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify(request)
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(`OpenAI API error: ${errorData.error?.message || errorData.error || response.statusText}`);
+    throw new Error(`TTS API error: ${errorData.error?.message || errorData.error || response.statusText}`);
   }
 
   return await response.blob();
@@ -86,21 +106,41 @@ async function readAloud(text: string): Promise<void> {
 
   try {
     isPlaying = true;
+    isPaused = false;
     updatePlaybackStatus();
 
-    // Call OpenAI TTS API
+    // Call TTS API
     const audioBlob = await callOpenAITTS(text);
 
-    // Play the audio
-    await audioPlayer.play(audioBlob);
+    // Play the audio with configured volume
+    await audioPlayer.play(audioBlob, currentConfig.volume);
 
   } catch (error) {
     console.error('Error in readAloud:', error);
     throw error;
   } finally {
     isPlaying = false;
+    isPaused = false;
     updatePlaybackStatus();
   }
+}
+
+/**
+ * Pause playback
+ */
+function pausePlayback(): void {
+  audioPlayer.pause();
+  isPaused = true;
+  updatePlaybackStatus();
+}
+
+/**
+ * Resume playback
+ */
+function resumePlayback(): void {
+  audioPlayer.resume();
+  isPaused = false;
+  updatePlaybackStatus();
 }
 
 /**
@@ -109,6 +149,7 @@ async function readAloud(text: string): Promise<void> {
 function stopPlayback(): void {
   audioPlayer.stop();
   isPlaying = false;
+  isPaused = false;
   updatePlaybackStatus();
 }
 
@@ -117,7 +158,8 @@ function stopPlayback(): void {
  */
 function updatePlaybackStatus(): void {
   const status: PlaybackStatus = {
-    isPlaying
+    isPlaying,
+    isPaused
   };
 
   // Notify all extension pages (popup, options, etc.)
@@ -171,6 +213,16 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
           sendResponse({ success: true });
           break;
 
+        case MessageType.PAUSE_PLAYBACK:
+          pausePlayback();
+          sendResponse({ success: true });
+          break;
+
+        case MessageType.RESUME_PLAYBACK:
+          resumePlayback();
+          sendResponse({ success: true });
+          break;
+
         case MessageType.STOP_PLAYBACK:
           stopPlayback();
           sendResponse({ success: true });
@@ -179,7 +231,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
         case MessageType.PLAYBACK_STATUS:
           sendResponse({
             success: true,
-            data: { isPlaying }
+            data: { isPlaying, isPaused }
           });
           break;
 
@@ -231,6 +283,8 @@ if (typeof globalThis !== 'undefined') {
     loadConfig,
     saveConfig,
     readAloud,
+    pausePlayback,
+    resumePlayback,
     stopPlayback,
     getConfig: () => currentConfig
   };
