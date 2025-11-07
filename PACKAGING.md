@@ -33,13 +33,19 @@ npm run package:firefox
 ## Package Differences
 
 ### Chrome Package
+- **Manifest V3** - Uses service worker
 - Removes `browser_specific_settings` from manifest
 - Uses offscreen document for audio playback
 - Ready for Chrome Web Store
 
 ### Firefox Package
+- **Manifest V2** - Uses background scripts (Firefox doesn't fully support MV3 yet)
+- Converts `action` to `browser_action`
+- Converts `service_worker` to `scripts`
+- Merges `host_permissions` into `permissions`
+- Removes `offscreen` permission (not in MV2)
 - Includes `browser_specific_settings` with extension ID
-- Falls back to popup-based audio playback
+- Uses popup-based audio playback
 - Ready for Firefox Add-ons (AMO)
 
 ## Distribution

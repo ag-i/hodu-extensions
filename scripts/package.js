@@ -97,13 +97,50 @@ function packageFirefox() {
   const firefoxDir = path.join(packagesDir, 'firefox');
   copyDir(distDir, firefoxDir);
 
-  // Firefox uses the manifest as-is (includes browser_specific_settings)
+  // Read and modify manifest for Firefox (convert to Manifest V2)
+  const manifestPath = path.join(firefoxDir, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+  // Convert to Manifest V2 for Firefox
+  manifest.manifest_version = 2;
+
+  // Change action to browser_action
+  manifest.browser_action = manifest.action;
+  delete manifest.action;
+
+  // Change background service_worker to scripts
+  manifest.background = {
+    scripts: ['background.js'],
+    persistent: false
+  };
+
+  // Remove offscreen permission (not in MV2)
+  manifest.permissions = manifest.permissions.filter(p => p !== 'offscreen');
+
+  // Move host_permissions to permissions for MV2
+  if (manifest.host_permissions) {
+    manifest.permissions = [...manifest.permissions, ...manifest.host_permissions];
+    delete manifest.host_permissions;
+  }
+
+  // Ensure browser_specific_settings exists
+  if (!manifest.browser_specific_settings) {
+    manifest.browser_specific_settings = {
+      gecko: {
+        id: 'read-aloud-tts@hodu-extensions.io',
+        strict_min_version: '79.0'
+      }
+    };
+  }
+
+  // Write modified manifest
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
   // Create zip
   const zipPath = path.join(packagesDir, 'read-aloud-firefox-v1.0.0.zip');
   createZip(firefoxDir, zipPath);
 
-  console.log('✨ Firefox package ready!');
+  console.log('✨ Firefox package ready (Manifest V2)!');
 }
 
 // Package based on target
