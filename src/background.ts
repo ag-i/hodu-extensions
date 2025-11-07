@@ -65,13 +65,34 @@ async function callOpenAITTS(text: string): Promise<Blob> {
     apiEndpoint = `${apiEndpoint}/audio/speech`;
   }
 
-  const request: TTSRequest = {
-    model: currentConfig.model,
-    voice: currentConfig.voice,
-    input: text,
-    speed: currentConfig.speed,
-    response_format: 'mp3'
-  };
+  // Detect if this is OpenAI's official API or a local/custom API
+  const isOpenAIAPI = apiEndpoint.includes('api.openai.com');
+
+  // Build request based on API type
+  let request: any;
+  if (isOpenAIAPI) {
+    // Standard OpenAI API format
+    request = {
+      model: currentConfig.model,
+      voice: currentConfig.voice,
+      input: text,
+      speed: currentConfig.speed,
+      response_format: 'mp3'
+    };
+  } else {
+    // Local/custom API format (like Kokoro TTS)
+    request = {
+      input: text,
+      voice: currentConfig.voice,
+      response_format: 'mp3',
+      speed: Math.round(currentConfig.speed) || 1
+    };
+
+    // Add optional fields if model is specified (some APIs use it)
+    if (currentConfig.model && currentConfig.model !== 'tts-1') {
+      request.model = currentConfig.model;
+    }
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
@@ -84,10 +105,12 @@ async function callOpenAITTS(text: string): Promise<Blob> {
 
   try {
     console.log('[TTS] Calling API:', apiEndpoint);
+    console.log('[TTS] Is OpenAI API:', isOpenAIAPI);
     console.log('[TTS] Request:', request);
 
     const response = await fetch(apiEndpoint, {
       method: 'POST',
+      mode: 'cors',
       headers,
       body: JSON.stringify(request)
     });
@@ -99,10 +122,15 @@ async function callOpenAITTS(text: string): Promise<Blob> {
       throw new Error(`TTS API error (${response.status}): ${errorData.error?.message || errorData.error || response.statusText}`);
     }
 
-    return await response.blob();
+    const blob = await response.blob();
+    console.log('[TTS] Received blob, size:', blob.size);
+    return blob;
   } catch (error) {
+    console.error('[TTS] Fetch error:', error);
+
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error(`Failed to connect to API at ${apiEndpoint}. Please check:\n1. API URL is correct (currently: ${currentConfig.apiUrl})\n2. Your API server is running\n3. Network connectivity`);
+      const errorMsg = `Failed to connect to API at ${apiEndpoint}.\n\nPossible issues:\n1. CORS: Your API server needs to allow requests from chrome-extension://\n2. Network: Check if ${currentConfig.apiUrl} is accessible\n3. Firewall: Ensure port ${new URL(apiEndpoint).port || '80'} is open\n\nTip: Check browser console (F12) for CORS errors`;
+      throw new Error(errorMsg);
     }
     throw error;
   }

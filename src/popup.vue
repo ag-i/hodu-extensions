@@ -97,14 +97,17 @@
 
         <div class="form-group">
           <label for="voice">Voice</label>
-          <select id="voice" v-model="config.voice" @change="saveConfig">
-            <option value="alloy">Alloy</option>
-            <option value="echo">Echo</option>
-            <option value="fable">Fable</option>
-            <option value="onyx">Onyx</option>
-            <option value="nova">Nova</option>
-            <option value="shimmer">Shimmer</option>
-          </select>
+          <input
+            id="voice"
+            v-model="config.voice"
+            type="text"
+            placeholder="alloy or af_alloy for local APIs"
+            @change="saveConfig"
+          />
+          <small>
+            OpenAI: alloy, echo, fable, onyx, nova, shimmer<br>
+            Local APIs: af_alloy, bf_emma, etc. (check your API docs)
+          </small>
         </div>
 
         <div class="form-group">
