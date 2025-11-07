@@ -11,4 +11,4 @@ disable = false
 
 [run]
 # Bun runtime configuration
-shell = "bash"
+shell = "system"
