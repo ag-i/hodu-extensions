@@ -343,6 +343,15 @@ chrome.runtime.onMessage.addListener((message: Message | any, sender, sendRespon
           });
           break;
 
+        case 'SET_VOLUME':
+          // Forward volume update to offscreen document
+          await chrome.runtime.sendMessage({
+            type: 'SET_VOLUME',
+            data: { volume: message.data.volume }
+          }).catch(() => {});
+          sendResponse({ success: true });
+          break;
+
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
       }

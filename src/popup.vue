@@ -162,7 +162,7 @@
             min="0"
             max="1"
             step="0.01"
-            @change="saveConfig"
+            @input="updateVolume"
           />
         </div>
       </div>
@@ -215,11 +215,26 @@ async function saveConfig() {
 }
 
 /**
+ * Update volume in real-time (for currently playing audio)
+ */
+async function updateVolume() {
+  await saveConfig();
+  // Send volume update to offscreen document for currently playing audio
+  try {
+    await chrome.runtime.sendMessage({
+      type: 'SET_VOLUME',
+      data: { volume: config.value.volume }
+    });
+  } catch (err) {
+    // Ignore if offscreen document doesn't exist yet
+  }
+}
+
+/**
  * Read aloud selected text
  */
 async function readAloud() {
   error.value = '';
-  isPlaying.value = true;
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -229,11 +244,12 @@ async function readAloud() {
     if (!response.success) {
       throw new Error(response.error || 'Failed to read aloud');
     }
+    // Don't set isPlaying here - let background script manage state via PLAYBACK_STATUS
   } catch (err) {
     console.error('Error reading aloud:', err);
     error.value = err instanceof Error ? err.message : 'Failed to read aloud';
-  } finally {
     isPlaying.value = false;
+    isPaused.value = false;
   }
 }
 
@@ -245,7 +261,7 @@ async function pausePlayback() {
     await chrome.runtime.sendMessage({
       type: MessageType.PAUSE_PLAYBACK
     });
-    isPaused.value = true;
+    // State will be updated via PLAYBACK_STATUS message
   } catch (err) {
     console.error('Error pausing playback:', err);
   }
@@ -259,7 +275,7 @@ async function resumePlayback() {
     await chrome.runtime.sendMessage({
       type: MessageType.RESUME_PLAYBACK
     });
-    isPaused.value = false;
+    // State will be updated via PLAYBACK_STATUS message
   } catch (err) {
     console.error('Error resuming playback:', err);
   }
@@ -273,8 +289,7 @@ async function stopPlayback() {
     await chrome.runtime.sendMessage({
       type: MessageType.STOP_PLAYBACK
     });
-    isPlaying.value = false;
-    isPaused.value = false;
+    // State will be updated via PLAYBACK_STATUS message
   } catch (err) {
     console.error('Error stopping playback:', err);
   }
