@@ -80,18 +80,17 @@ async function callOpenAITTS(text: string): Promise<Blob> {
       response_format: 'mp3'
     };
   } else {
-    // Local/custom API format (like Kokoro TTS)
+    // Local/custom API format (like Kokoro TTS) - matching HAR file format exactly
     request = {
       input: text,
       voice: currentConfig.voice,
       response_format: 'mp3',
-      speed: Math.round(currentConfig.speed) || 1
+      download_format: 'mp3',
+      stream: true,
+      speed: Math.round(currentConfig.speed) || 1,
+      return_download_link: true
     };
-
-    // Add optional fields if model is specified (some APIs use it)
-    if (currentConfig.model && currentConfig.model !== 'tts-1') {
-      request.model = currentConfig.model;
-    }
+    // DO NOT add model field for local APIs - they don't support it
   }
 
   const headers: Record<string, string> = {
