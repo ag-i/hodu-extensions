@@ -82,18 +82,30 @@ async function callOpenAITTS(text: string): Promise<Blob> {
     headers['Authorization'] = `Bearer ${currentConfig.apiKey}`;
   }
 
-  const response = await fetch(apiEndpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(request)
-  });
+  try {
+    console.log('[TTS] Calling API:', apiEndpoint);
+    console.log('[TTS] Request:', request);
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(`TTS API error: ${errorData.error?.message || errorData.error || response.statusText}`);
+    const response = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(request)
+    });
+
+    console.log('[TTS] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(`TTS API error (${response.status}): ${errorData.error?.message || errorData.error || response.statusText}`);
+    }
+
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(`Failed to connect to API at ${apiEndpoint}. Please check:\n1. API URL is correct (currently: ${currentConfig.apiUrl})\n2. Your API server is running\n3. Network connectivity`);
+    }
+    throw error;
   }
-
-  return await response.blob();
 }
 
 /**
