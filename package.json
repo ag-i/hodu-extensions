@@ -1,0 +1,21 @@
+{
+  "name": "hodu-read-aloud-extension",
+  "version": "1.0.0",
+  "description": "Browser extension to read aloud selected text using OpenAI TTS API",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "typescript": "^5.4.2",
+    "vite": "^5.1.6",
+    "vite-plugin-static-copy": "^1.0.2"
+  }
+}

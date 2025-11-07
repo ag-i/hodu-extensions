@@ -1,0 +1,14 @@
+[install]
+# Configure Bun package installation
+optional = true
+dev = true
+peer = true
+production = false
+
+[install.cache]
+# Enable caching for faster installs
+disable = false
+
+[run]
+# Bun runtime configuration
+shell = "bash"
