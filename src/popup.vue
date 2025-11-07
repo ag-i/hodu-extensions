@@ -88,25 +88,51 @@
         </div>
 
         <div class="form-group">
-          <label for="model">Model</label>
-          <select id="model" v-model="config.model" @change="saveConfig">
-            <option value="tts-1">tts-1 (Standard)</option>
-            <option value="tts-1-hd">tts-1-hd (High Quality)</option>
-          </select>
+          <label for="model">Model (Optional for local APIs)</label>
+          <input
+            id="model"
+            v-model="config.model"
+            type="text"
+            placeholder="tts-1, tts-1-hd, or kokoro"
+            @change="saveConfig"
+          />
+          <small>OpenAI: tts-1, tts-1-hd | Local: kokoro, or leave empty</small>
         </div>
 
         <div class="form-group">
           <label for="voice">Voice</label>
-          <input
-            id="voice"
-            v-model="config.voice"
-            type="text"
-            placeholder="alloy or af_alloy for local APIs"
-            @change="saveConfig"
-          />
+          <div class="voice-input-container">
+            <input
+              id="voice"
+              v-model="config.voice"
+              type="text"
+              list="voice-presets"
+              placeholder="Enter voice name or select preset"
+              @change="saveConfig"
+            />
+            <datalist id="voice-presets">
+              <option value="alloy">OpenAI: Alloy (neutral)</option>
+              <option value="echo">OpenAI: Echo (male)</option>
+              <option value="fable">OpenAI: Fable (British male)</option>
+              <option value="onyx">OpenAI: Onyx (deep male)</option>
+              <option value="nova">OpenAI: Nova (female)</option>
+              <option value="shimmer">OpenAI: Shimmer (female)</option>
+              <option value="af_alloy">Kokoro: American Female - Alloy</option>
+              <option value="af_bella">Kokoro: American Female - Bella</option>
+              <option value="af_nicole">Kokoro: American Female - Nicole</option>
+              <option value="af_sarah">Kokoro: American Female - Sarah</option>
+              <option value="af_sky">Kokoro: American Female - Sky</option>
+              <option value="am_adam">Kokoro: American Male - Adam</option>
+              <option value="am_michael">Kokoro: American Male - Michael</option>
+              <option value="bf_emma">Kokoro: British Female - Emma</option>
+              <option value="bf_isabella">Kokoro: British Female - Isabella</option>
+              <option value="bm_george">Kokoro: British Male - George</option>
+              <option value="af_bella+af_sky">Kokoro: Mixed - Bella+Sky</option>
+            </datalist>
+          </div>
           <small>
-            OpenAI: alloy, echo, fable, onyx, nova, shimmer<br>
-            Local APIs: af_alloy, bf_emma, etc. (check your API docs)
+            Tip: Combine voices with + like "af_bella+af_sky" for Kokoro TTS<br>
+            OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
           </small>
         </div>
 
